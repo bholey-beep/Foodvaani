@@ -38,6 +38,7 @@ router.post('/extract', restaurantOnly, ah(async (req, res) => {
   if (transcript.length > 3000) throw new HttpError(400, 'Transcript is too long.');
 
   const restaurant = await Restaurant.findOne({ user: req.user._id });
+  if (!restaurant) throw new HttpError(409, 'Your restaurant profile is missing. Please open your profile, save it, and try again.');
   const { fields, missingFields, engine } = await extract(transcript);
 
   const draft = { ...fields, location: restaurant.address, allergens: fields.allergens || [] };

@@ -16,6 +16,12 @@ async function requireAuth(req, res, next) {
       throw new HttpError(401, 'Your session has expired. Please sign in again.');
     }
 
+    // A malformed or legacy token can carry a sub that is not a Mongo id.
+    // Treat that as a stale session instead of letting Mongoose throw a 500.
+    if (!/^[0-9a-f]{24}$/i.test(String(payload.sub || ''))) {
+      throw new HttpError(401, 'Your session has expired. Please sign in again.');
+    }
+
     const user = await User.findById(payload.sub);
     if (!user) throw new HttpError(401, 'Account not found.');
     req.user = user;

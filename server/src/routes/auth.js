@@ -40,7 +40,13 @@ router.post('/request-otp', otpLimiter, ah(async (req, res) => {
   const code = String(crypto.randomInt(100000, 1000000));
   await Otp.deleteMany({ mobileNumber: mobile });
   await Otp.create({ mobileNumber: mobile, codeHash: hash(mobile, code), expiresAt: new Date(Date.now() + OTP_TTL_MS) });
-  await sendOtpSms(mobile, code);
+
+  try {
+    await sendOtpSms(mobile, code);
+  } catch (err) {
+    console.error('[otp] could not send SMS:', err.message);
+    throw new HttpError(503, 'We could not send the SMS code right now. Please try again in a minute.');
+  }
 
   res.json({ sent: true, expiresInSeconds: OTP_TTL_MS / 1000, ...(env.otpMode === 'dev' ? { devCode: code } : {}) });
 }));
@@ -61,11 +67,19 @@ router.post('/verify-otp', ah(async (req, res) => {
   }
 
   await Otp.deleteMany({ mobileNumber: mobile });
-  const user = await User.findOneAndUpdate(
-    { mobileNumber: mobile },
-    { $setOnInsert: { mobileNumber: mobile }, $set: { lastLoginAt: new Date() } },
-    { upsert: true, new: true }
-  );
+  let user;
+  try {
+    user = await User.findOneAndUpdate(
+      { mobileNumber: mobile },
+      { $setOnInsert: { mobileNumber: mobile }, $set: { lastLoginAt: new Date() } },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    // Two verify requests can race on the unique mobileNumber index. Reuse the winner.
+    if (err.code !== 11000) throw err;
+    user = await User.findOne({ mobileNumber: mobile });
+    if (!user) throw err;
+  }
 
   const token = jwt.sign({ sub: user._id.toString(), role: user.role }, env.jwtSecret, { expiresIn: '30d' });
   res.json({ token, user: publicUser(user), profile: await loadProfile(user) });

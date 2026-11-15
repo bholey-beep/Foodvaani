@@ -35,10 +35,16 @@ async function generateAudio(donation) {
 }
 
 async function ownDonation(req) {
-  const restaurant = await Restaurant.findOne({ user: req.user._id });
+  const restaurant = await restaurantFor(req);
   const donation = await Donation.findById(req.params.id).catch(() => null);
   if (!donation || !donation.restaurant.equals(restaurant._id)) throw new HttpError(404, 'Listing not found.');
   return { donation, restaurant };
+}
+
+async function restaurantFor(req) {
+  const restaurant = await Restaurant.findOne({ user: req.user._id });
+  if (!restaurant) throw new HttpError(409, 'Your restaurant profile is missing. Please open your profile, save it, and try again.');
+  return restaurant;
 }
 
 // Public numbers for the landing page
@@ -55,7 +61,7 @@ router.get('/stats', ah(async (req, res) => {
 
 // Dry-run validation for the review screen
 router.post('/validate', restaurantOnly, ah(async (req, res) => {
-  const restaurant = await Restaurant.findOne({ user: req.user._id });
+  const restaurant = await restaurantFor(req);
   const { valid, errors, warnings, missingFields } = await validateDraft(req.body.draft || {}, restaurant);
   res.json({ valid, errors, warnings, missingFields });
 }));
@@ -66,7 +72,7 @@ router.post('/', restaurantOnly, ah(async (req, res) => {
   if (ownerDeclaration !== true) {
     throw new HttpError(400, 'Please confirm the food safety declaration before publishing.');
   }
-  const restaurant = await Restaurant.findOne({ user: req.user._id });
+  const restaurant = await restaurantFor(req);
   const { valid, errors, listing } = await validateDraft(draft, restaurant);
   if (!valid) throw new HttpError(400, 'Some details need fixing before this can be published.', { errors });
 
@@ -118,7 +124,7 @@ router.get('/', requireAuth, ah(async (req, res) => {
 
 // Restaurant's own listings, active first, with history
 router.get('/mine', restaurantOnly, ah(async (req, res) => {
-  const restaurant = await Restaurant.findOne({ user: req.user._id });
+  const restaurant = await restaurantFor(req);
   const donations = await Donation.find({ restaurant: restaurant._id }).sort({ createdAt: -1 }).limit(100).lean();
   res.json({ donations });
 }));

@@ -25,10 +25,10 @@ async function validateDraft(draft, restaurant, { excludeId } = {}) {
   const unit = clean(draft.unit);
   if (!unit) errors.unit = 'Add a unit, for example plates, boxes or kg.';
 
-  const location = clean(draft.location) || restaurant.address;
+  const location = clean(draft.location) || restaurant?.address;
   if (!location) errors.location = 'Pickup location is required.';
 
-  const contactNumber = restaurant.verifiedPhone; // always the verified number, never typed in
+  const contactNumber = restaurant?.verifiedPhone; // always the verified number, never typed in
   if (!/^[6-9]\d{9}$/.test(contactNumber || '')) errors.contactNumber = 'Your verified phone number is missing. Update your profile.';
 
   const DAY = 24 * 3600000;
@@ -66,7 +66,7 @@ async function validateDraft(draft, restaurant, { excludeId } = {}) {
     : String(draft.allergens || '').split(',').map((a) => a.trim()).filter(Boolean).slice(0, 10);
 
   // Duplicate check: same dish still active from this restaurant
-  if (foodName && restaurant._id) {
+  if (typeof foodName === 'string' && restaurant?._id) {
     const dup = await Donation.findOne({
       restaurant: restaurant._id,
       status: { $in: Donation.ACTIVE_STATUSES },
@@ -83,9 +83,9 @@ async function validateDraft(draft, restaurant, { excludeId } = {}) {
     category,
     diet,
     location,
-    area: restaurant.area,
-    restaurantName: restaurant.hotelName,
-    contactPerson: restaurant.ownerName,
+    area: restaurant?.area,
+    restaurantName: restaurant?.hotelName,
+    contactPerson: restaurant?.ownerName,
     contactNumber,
     preparedAt,
     pickupDeadline,

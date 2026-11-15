@@ -40,7 +40,16 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ message: err.code === 'LIMIT_FILE_SIZE' ? 'Audio file is too large (max 10 MB).' : err.message });
   }
   const status = err.status || 500;
-  if (status >= 500) console.error(err);
+  if (status >= 500) {
+    console.error(err);
+    // Keep a copy on disk so a 500 can be diagnosed after the terminal scrolls away.
+    try {
+      const line = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl}\n${err.stack || err}\n\n`;
+      fs.appendFileSync(path.join(__dirname, '..', 'error.log'), line);
+    } catch {
+      /* logging must never break the response */
+    }
+  }
   res.status(status).json({ message: status >= 500 && !err.status ? 'Something went wrong on our side.' : err.message, ...(err.details || {}) });
 });
 
