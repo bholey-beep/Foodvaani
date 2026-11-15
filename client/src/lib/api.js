@@ -35,7 +35,10 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) tokenStore.set(null);
-    throw new ApiError(data.message || `Request failed (${res.status})`, res.status, data);
+    const fallback = res.status >= 500
+      ? `The API returned an error (${res.status}). Check that the backend is running on port 5000.`
+      : `Request failed (${res.status})`;
+    throw new ApiError(data.message || fallback, res.status, data);
   }
   return data;
 }
