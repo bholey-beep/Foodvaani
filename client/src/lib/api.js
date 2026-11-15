@@ -1,13 +1,39 @@
-// In dev, Vite proxies /api to the Express server. For a separate deploy set VITE_API_URL.
-const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+// API configuration
+// Local development: Vite proxies /api to localhost:5000
+// Production: VITE_API_URL points to the Render backend
+
+const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
 const TOKEN_KEY = 'fv_token';
+
+// Normalize paths to prevent duplicate /api/api routes
+function normalizeApiPath(path) {
+  let normalized = `/${String(path).replace(/^\/+/, '')}`;
+
+  // Remove an existing /api prefix if the caller included it
+  normalized = normalized.replace(/^\/api(?=\/|$)/, '');
+
+  return normalized || '/';
+}
 
 export const tokenStore = {
   get: () => {
-    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
   },
-  set: (t) => {
-    try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch { /* private mode */ }
+
+  set: (token) => {
+    try {
+      token
+        ? localStorage.setItem(TOKEN_KEY, token)
+        : localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // Private browsing mode
+    }
   },
 };
 
@@ -21,24 +47,51 @@ export class ApiError extends Error {
 
 export async function api(path, { method = 'GET', body, form } = {}) {
   const headers = {};
+
   const token = tokenStore.get();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body) headers['Content-Type'] = 'application/json';
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const endpoint = `${BASE}/api${normalizeApiPath(path)}`;
 
   let res;
+
   try {
-    res = await fetch(`${BASE}/api${path}`, { method, headers, body: form || (body ? JSON.stringify(body) : undefined) });
-  } catch {
-    throw new ApiError('Cannot reach the server. Check that the backend is running.', 0);
+    res = await fetch(endpoint, {
+      method,
+      headers,
+      body: form || (body ? JSON.stringify(body) : undefined),
+    });
+  } catch (error) {
+    console.error('API connection error:', endpoint, error);
+
+    throw new ApiError(
+      'Cannot reach the server. Check the backend URL, CORS configuration, and network connection.',
+      0
+    );
   }
 
   const data = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    if (res.status === 401) tokenStore.set(null);
-    const fallback = res.status >= 500
-      ? `The API returned an error (${res.status}). Check that the backend is running on port 5000.`
-      : `Request failed (${res.status})`;
-    throw new ApiError(data.message || fallback, res.status, data);
+    if (res.status === 401) {
+      tokenStore.set(null);
+    }
+
+    const fallback = `API request failed (${res.status})`;
+
+    throw new ApiError(
+      data.message || fallback,
+      res.status,
+      data
+    );
   }
+
   return data;
 }
